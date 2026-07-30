@@ -75,8 +75,11 @@
   function navHTML() {
     /* Nav links now live in the floating bottom menu (see fmItemHTML calls
        in footerHTML) — the header keeps only the logo. */
+    /* Starts hidden — initHeroChrome reveals it at the same moment the
+       floating bottom menu eases in, so both pieces of chrome appear
+       together instead of the logo being on screen from the first frame. */
     return `
-<header class="site-header" id="siteHeader">
+<header class="site-header is-hero-hidden" id="siteHeader">
   <div class="header-inner">
     <a href="${r}index.html" class="site-logo" aria-label="CrossTalk Global — Home">
       ${CROSS_SVG}
@@ -145,12 +148,8 @@
   </div>
 </footer>
 
-<!-- Podcast floating widget — present on every page -->
+<!-- Podcast floating widget — icon only, shown/hidden with the bottom menu -->
 <div class="podcast-widget" id="podcastWidget" role="complementary" aria-label="CrossTalk Podcast">
-  <div class="podcast-badge" id="podcastBadge">
-    <span class="pb-dot"></span>
-    <span class="pb-label">New Episode Available</span>
-  </div>
   <a href="https://www.youtube.com/@CrossTalkGlobal" target="_blank" rel="noopener"
      class="podcast-btn" aria-label="Listen to CrossTalk Podcast" title="CrossTalk Podcast">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.75" style="position:relative;z-index:1">
@@ -229,12 +228,13 @@
     var header = $("#siteHeader");
     if (!header) return;
 
-    /* Header stays transparent (white text) while dark sections are behind it,
-       then turns solid. Homepage: hero+confront are dark, stat-band is first light
-       block. Inner pages: dark page-banner/hero then light content. */
+    /* The header is now hidden for the whole dark opening (initHeroChrome) and
+       only eases in once that has scrolled past — where the content behind it
+       is light. So it must already be solid the moment it appears: use the same
+       reveal point as the chrome, not the first light block after it. */
     function getThreshold() {
-      var ref = $(".stat-band") || $(".page-banner") || $(".region-hero") || $(".hero");
-      if (ref) return ref.offsetTop + ref.offsetHeight - header.offsetHeight - 8;
+      var ref = $(".section-confront") || $(".hero") || $(".page-banner") || $(".region-hero");
+      if (ref) return ref.offsetTop + ref.offsetHeight - 120;
       return 80; /* light-first pages: go solid almost immediately */
     }
 
@@ -406,21 +406,13 @@
   ══════════════════════════════════════════ */
   function initPodcastWidget() {
     var widget = $("#podcastWidget");
-    var badge  = $("#podcastBadge");
     if (!widget) return;
 
-    /* Show widget after hero/confront section passes */
-    var trigger = $(".section-confront") || $(".stat-band") || $(".hero");
-    if (trigger) {
-      var io = new IntersectionObserver(function(entries) {
-        if (!entries[0].isIntersecting) widget.classList.add("pw-visible");
-      }, { threshold: 0 });
-      io.observe(trigger);
-    } else {
-      setTimeout(function() { widget.classList.add("pw-visible"); }, 2000);
-    }
+    /* Visibility is not owned here — initHeroChrome shows the widget at the
+       same moment as the floating bottom menu and the header logo, and
+       initFloatingMenu clears it while the footer is on screen. */
 
-    /* Detect light vs dark section under the widget — switch badge style */
+    /* Detect light vs dark section under the widget — switch button style */
     var LIGHT_SELECTORS = ".section--light, .section--gray, .gfc-section, .globe-section ~ *, .features2-section";
     function checkBackground() {
       /* Widget is fixed bottom-right — check what element is at that position */
@@ -448,15 +440,6 @@
     }
     window.addEventListener("scroll", checkBackground, { passive: true });
     checkBackground();
-
-    /* Periodic badge pulse — appears every ~12s */
-    if (badge) {
-      function showBadge() {
-        badge.classList.add("pb-show");
-        setTimeout(function() { badge.classList.remove("pb-show"); }, 4000);
-      }
-      setTimeout(function() { showBadge(); setInterval(showBadge, 12000); }, 5000);
-    }
   }
 
   /* ══════════════════════════════════════════
@@ -521,6 +504,21 @@
       if (projection) {
         projection.scale(baseRadius * zoom).translate([width / 2, height / 2]);
       }
+      syncMarkerLayer();
+    }
+
+    /* The pin overlay must sit exactly on the canvas box, not on the flex
+       wrapper around it: projection() returns coordinates in canvas space,
+       and the canvas is centred inside a wrapper that is often wider (it is
+       capped at 480px). Left as `inset: 0`, every pin was offset by half the
+       leftover width — pins drifting off the sphere instead of turning with
+       it. Re-measure the canvas's own offset whenever the canvas is sized. */
+    function syncMarkerLayer() {
+      if (!markersWrap) return;
+      markersWrap.style.left   = canvas.offsetLeft + "px";
+      markersWrap.style.top    = canvas.offsetTop + "px";
+      markersWrap.style.width  = width + "px";
+      markersWrap.style.height = height + "px";
     }
 
     function render() {
@@ -584,8 +582,12 @@
       MARKERS.forEach(function (m, i) {
         var el = markerEls[i];
         if (!el) return;
-        var visible = window.d3.geoDistance([m.lng, m.lat], center) < 1.4;
         var p = projection([m.lng, m.lat]);
+        /* Fade out right at the limb (clipAngle is 90°, where projection()
+           starts returning null). The old 1.4rad cutoff hid pins ~10° early,
+           and a null p left the element frozen at its last on-screen spot
+           instead of turning away with the sphere. */
+        var visible = !!p && window.d3.geoDistance([m.lng, m.lat], center) < Math.PI / 2 - 0.06;
         if (p) { el.style.left = p[0] + "px"; el.style.top = p[1] + "px"; }
         el.classList.toggle("is-visible", visible);
       });
@@ -646,9 +648,20 @@
       return dots;
     }
 
-    function loadLand() {
-      fetch("https://raw.githubusercontent.com/martynafford/natural-earth-geojson/refs/heads/master/110m/physical/ne_110m_land.json")
-        .then(function (res) { if (!res.ok) throw new Error("land fetch failed"); return res.json(); })
+    /* Continents ship with the site (assets/ne_110m_land.json). They used to be
+       fetched from raw.githubusercontent.com at runtime — when that was slow or
+       blocked, `landFeatures` stayed null and render() drew a bare sphere with
+       the region pins apparently floating in empty space. The CDN is kept only
+       as a fallback if the local copy is ever missing. */
+    var LAND_SOURCES = [
+      r + "assets/ne_110m_land.json",
+      "https://raw.githubusercontent.com/martynafford/natural-earth-geojson/refs/heads/master/110m/physical/ne_110m_land.json"
+    ];
+    function loadLand(idx) {
+      var i = idx || 0;
+      if (i >= LAND_SOURCES.length) { console.warn("[globe] land data unavailable"); return; }
+      fetch(LAND_SOURCES[i])
+        .then(function (res) { if (!res.ok) throw new Error("land fetch failed: " + res.status); return res.json(); })
         .then(function (json) {
           landFeatures = json;
           var dots = [];
@@ -657,7 +670,7 @@
           });
           allDots = dots;
         })
-        .catch(function (err) { console.warn("[globe] land data failed to load:", err); });
+        .catch(function () { loadLand(i + 1); });
     }
 
     /* ── drag to spin — mouse ── */
@@ -767,16 +780,22 @@
       if (document.hidden) pause(); else resume();
     });
 
-    function ensureD3(cb) {
+    /* d3 is vendored in lib/ for the same reason as the land data: loading it
+       from unpkg meant the globe silently degraded to a bare sphere whenever
+       that request was slow or blocked. CDN stays as a fallback. */
+    var D3_SOURCES = [r + "lib/d3.min.js", "https://unpkg.com/d3@7/dist/d3.min.js"];
+    function ensureD3(cb, idx) {
       if (window.d3) { cb(); return; }
-      var s = document.createElement("script");
-      s.src = "https://unpkg.com/d3@7/dist/d3.min.js";
-      s.onload = cb;
-      s.onerror = function () {
+      var i = idx || 0;
+      if (i >= D3_SOURCES.length) {
         console.warn("[globe] d3 failed to load — showing static fallback");
-        var c = canvas.getContext("2d");
-        sizeCanvasFallback(c);
-      };
+        sizeCanvasFallback(canvas.getContext("2d"));
+        return;
+      }
+      var s = document.createElement("script");
+      s.src = D3_SOURCES[i];
+      s.onload = function () { if (window.d3) cb(); else ensureD3(cb, i + 1); };
+      s.onerror = function () { ensureD3(cb, i + 1); };
       document.head.appendChild(s);
     }
     function sizeCanvasFallback(c) {
@@ -805,31 +824,37 @@
   }
 
   /* ══════════════════════════════════════════
-     HERO CHROME — the header only belongs to the hero. Once it scrolls
-     past, the header eases out and the floating bottom menu eases in to
-     take over as the persistent nav (and vice versa scrolling back up).
+     HERO CHROME — the opening (hero, plus the confront act on the homepage)
+     is shown bare: no logo, no floating menu, no podcast button. Once it has
+     scrolled past, all three pieces of chrome ease in together, and ease back
+     out together when you scroll back up to the top.
   ══════════════════════════════════════════ */
   function initHeroChrome() {
     var header = $("#siteHeader");
     var fm = $("#fmShell");
+    var podcast = $("#podcastWidget");
     if (!header) return;
+
+    function setChrome(on) {
+      header.classList.toggle("is-hero-hidden", !on);
+      if (fm) fm.classList.toggle("is-visible", on);
+      if (podcast) podcast.classList.toggle("pw-visible", on);
+    }
+
     var heroEl = $(".hero") || $(".page-banner") || $(".region-hero");
-    if (!heroEl) { if (fm) fm.classList.add("is-visible"); return; }
+    if (!heroEl) { setChrome(true); return; }
 
     /* On the homepage the cinematic "confront" section immediately follows
-       the hero and has its own centered CTAs — the fixed floating menu
-       sitting at the bottom-center of the viewport could otherwise land
-       right on top of those buttons and steal the click. Treat hero +
-       confront as one continuous "opening" chrome zone: header stays,
-       floating menu stays hidden, until the whole thing has scrolled past. */
+       the hero and reads as part of the same opening statement — treat hero +
+       confront as one continuous chrome-free zone, so the logo, the floating
+       menu and the podcast button all arrive once it has scrolled past. */
     var confrontEl = $(".section-confront");
     var chromeEnd = confrontEl || heroEl;
 
     var ticking = false;
     function update() {
       var pastHero = window.scrollY > (chromeEnd.offsetTop + chromeEnd.offsetHeight - 60);
-      header.classList.toggle("is-hero-hidden", pastHero);
-      if (fm) fm.classList.toggle("is-visible", pastHero);
+      setChrome(pastHero);
       ticking = false;
     }
     window.addEventListener("scroll", function () {
@@ -898,14 +923,16 @@
     });
 
     /* The footer's own centered content (newsletter form, copyright) sits
-       at the same bottom-center spot as this fixed pill — step the menu
-       aside once the footer scrolls into view so it never covers it. */
+       at the same bottom spot as this fixed pill and as the podcast button —
+       clear both once the footer scrolls into view so neither sits on top
+       of it. */
     var footer = $(".site-footer");
     if (footer && "IntersectionObserver" in window) {
       var footIO = new IntersectionObserver(function (entries) {
         var nearFooter = entries[0].isIntersecting;
         if (nearFooter) setOpen(false);
         shell.classList.toggle("fm-clear", nearFooter);
+        if (podcast) podcast.classList.toggle("pw-clear", nearFooter);
       }, { threshold: 0.12 });
       footIO.observe(footer);
     }

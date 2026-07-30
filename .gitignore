@@ -3,3 +3,4 @@ node_modules/
 .tmpcap/
 .claude/settings.local.json
 *.log
+.vercel
