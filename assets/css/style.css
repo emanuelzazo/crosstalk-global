@@ -575,6 +575,23 @@ p  { color: var(--ink-2); }
 .section-header { margin-bottom: 4rem; }
 .section-header.text-center .lead { margin: 0.75rem auto 0; }
 
+/* ── WHERE / region pages — tighter vertical rhythm ──
+   These pages are short blocks of copy rather than the homepage's long
+   editorial sections, so the site-wide 100–120px section padding left big
+   empty bands between one paragraph and the next. Overriding --section-v on
+   <body> re-scales every section that derives from it (.section, .gfc-section,
+   the pricing/feature blocks) in one move, without touching the homepage.
+   Applied via `<body class="page-where">` on where/* and seminars/. */
+body.page-where {
+  --section-v: 60px;
+}
+body.page-where .section-header { margin-bottom: 2.25rem; }
+body.page-where .two-col { row-gap: 2.5rem; }
+body.page-where .gfc-header { margin-bottom: 2.5rem; }
+@media (min-width: 1200px) {
+  body.page-where { --section-v: 72px; }
+}
+
 /* =============================================================
    12. CARDS — Apple card style with hover lift
    ============================================================= */
