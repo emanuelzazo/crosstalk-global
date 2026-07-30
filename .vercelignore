@@ -1,0 +1,11 @@
+# Local-development files only. Keeping package.json and server.js out of the
+# deployment stops Vercel from detecting a Node project and running a build —
+# this site is plain HTML/CSS/JS and must be published exactly as it sits in
+# the repo. Together with vercel.json's `outputDirectory: "."` this is what
+# makes assets/, lib/ and the page subdirectories actually ship.
+package.json
+server.js
+node_modules/
+CLAUDE.md
+.claude/
+.tmpcap/

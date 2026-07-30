@@ -662,6 +662,15 @@ body.page-where .gfc-header { margin-bottom: 2.5rem; }
   gap: clamp(2.5rem, 6vw, 6rem); align-items: center;
 }
 .two-col.flip .two-col-img { order: -1; }
+/* Photography is loaded from a remote placeholder service. When a request is
+   slow or fails the <img> collapses to nothing and the column reads as an
+   empty half-page next to the copy — give the frame its own tinted block so
+   the layout keeps its shape either way. */
+.two-col-img {
+  min-height: clamp(280px, 45vw, 520px);
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, var(--bg-2) 0%, #e7edf0 100%);
+}
 .two-col-img img {
   width: 100%; height: clamp(280px, 45vw, 520px);
   object-fit: cover; border-radius: var(--radius);
