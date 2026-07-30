@@ -3093,7 +3093,8 @@ img { image-rendering: auto; }
 }
 .fm-root.is-active { display: flex; }
 .fm-item {
-  display: inline-flex; align-items: center; gap: 0.45rem;
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center;
   color: #f7f1ed;
   text-decoration: none;
   text-transform: uppercase;
@@ -3111,7 +3112,16 @@ img { image-rendering: auto; }
 }
 .fm-char-row { display: block; height: 1em; line-height: 1em; }
 .fm-item:hover .fm-char-col { transform: translateY(-50%); }
-.fm-item-chevron { width: 13px; height: 13px; opacity: 0.6; flex-shrink: 0; }
+/* Hung outside the item box rather than sitting inside it: in flow, the
+   chevron widened the four parent items and `align-items: center` then
+   centred text+chevron together, leaving their labels ~10px left of WHY?
+   and GIVE. Out of flow, every label shares one centre axis. */
+.fm-item-chevron {
+  position: absolute;
+  left: 100%; margin-left: 0.45rem;
+  top: 50%; transform: translateY(-50%);
+  width: 13px; height: 13px; opacity: 0.6; flex-shrink: 0;
+}
 
 /* Level 2 — subcategories, one panel per parent item */
 .fm-sub {
@@ -3416,8 +3426,10 @@ img { image-rendering: auto; }
 .footer-nl-inline button:hover { transform: scale(1.03); }
 
 /* Floating menu items — subtle slide alongside the letter roll */
-.fm-item { transition: transform 0.28s var(--ease-out), opacity 0.28s var(--ease-out); }
-.fm-item:hover { transform: translateX(3px); }
+/* No translateX on hover — these items are centred, and a sideways nudge
+   pulls the hovered label off the shared axis. The per-letter roll
+   (.fm-char-col) is the hover feedback. */
+.fm-item { transition: opacity 0.28s var(--ease-out); }
 .fm-shell { transition-timing-function: var(--ease-out); }
 
 /* Globe region pins */
